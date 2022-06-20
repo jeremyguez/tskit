@@ -2805,6 +2805,39 @@ class Tree:
         """
         return self._ll_tree.get_b1_index()
 
+    def b2_index(self, base=10):
+        """
+        Returns the B2 balance index for this tree.
+        This is defined as the Shannon entropy of the probability
+        distribution to reach leaves assuming a random walk
+        from a root. The base used for default is 10, to match with
+        Shao and Sokal (1990).
+
+        .. seealso:: See `Shao and Sokal (1990)
+            <https://www.jstor.org/stable/2992186>`_ for details.
+
+        :param int base: The base used for the logarithm in the
+            Shannon entropy computation.
+        :return: The B2 balance index.
+        :rtype: float
+        """
+        # TODO implement in C
+        # Note that this will take into account the number of roots also, by considering
+        # them as children of the virtual root.
+        if self.num_roots != 1:
+            raise ValueError("B2 index is only defined for trees with one root")
+        stack = [(self.root, 1)]
+        total_proba = 0
+        while len(stack) > 0:
+            u, path_product = stack.pop()
+            if self.is_leaf(u):
+                total_proba -= path_product * math.log(path_product, base)
+            else:
+                path_product *= 1 / self.num_children(u)
+                for v in self.children(u):
+                    stack.append((v, path_product))
+        return total_proba
+
     def colless_index(self):
         """
         Returns the
@@ -4423,7 +4456,7 @@ class TreeSequence:
                 k -= 1
             yield EdgeDiff(Interval(left, right), edges_out, [])
 
-    def edge_diffs(self, include_terminal=False, *, direction=_tskit.FORWARD):
+    def edge_diffs(self, include_terminal=False, *, direction=tskit.FORWARD):
         """
         Returns an iterator over all the :ref:`edges <sec_edge_table_definition>` that
         are inserted and removed to build the trees as we move from left-to-right along
@@ -4442,6 +4475,10 @@ class TreeSequence:
         descending parent time, parent id, then child_id). This means that within
         each list, edges with the same parent appear consecutively.
 
+        The ``direction`` argument can be used to control whether diffs are produced
+        in the forward (left-to-right, increasing genome coordinate value)
+        or reverse (right-to-left, decreasing genome coordinate value) direction.
+
         :param bool include_terminal: If False (default), the iterator terminates
             after the final interval in the tree sequence (i.e., it does not
             report a final removal of all remaining edges), and the number
@@ -4449,7 +4486,9 @@ class TreeSequence:
             sequence. If True, an additional iteration takes place, with the last
             ``edges_out`` value reporting all the edges contained in the final
             tree (with both ``left`` and ``right`` equal to the sequence length).
-        :param int direction: FINISH ME
+        :param int direction: The direction of travel along the sequence for
+            diffs. Must be one of :data:`.FORWARD` or :data:`.REVERSE`.
+            (Default: :data:`.FORWARD`).
         :return: An iterator over the (interval, edges_out, edges_in) tuples. This
             is a named tuple, so the 3 values can be accessed by position
             (e.g. ``returned_tuple[0]``) or name (e.g. ``returned_tuple.interval``).
